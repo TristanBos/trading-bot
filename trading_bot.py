@@ -1,4 +1,9 @@
-from alpaca.trading.client import TradingClient
+from alpaca.trading.client import TradingClient 
+
+
+
+print("BOT STARTED")
+print("Checking SPY...")
 from alpaca.trading.requests import (
     MarketOrderRequest,
     TakeProfitRequest,
@@ -13,8 +18,8 @@ from datetime import datetime, timedelta
 
 import os
 
-API_KEY = os.environ["PKDBXY26JMIMSQOTZ7LPRTEDE4"]
-SECRET_KEY = os.environ["Qwe7xsZhx6GBxzHatD2piH3tnmrQ5RCaW6NxeWHnc4h"]
+API_KEY = os.environ["ALPACA_API_KEY"]
+SECRET_KEY = os.environ["ALPACA_SECRET_KEY"]
 
 trading_client = TradingClient(API_KEY, SECRET_KEY, paper=True)
 data_client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
