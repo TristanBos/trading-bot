@@ -1,9 +1,4 @@
-from alpaca.trading.client import TradingClient 
-
-
-
-print("BOT STARTED")
-print("Checking SPY...")
+from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (
     MarketOrderRequest,
     TakeProfitRequest,
@@ -15,8 +10,6 @@ from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.data.enums import DataFeed
 from datetime import datetime, timedelta
-
-import os
 
 API_KEY = os.environ["ALPACA_API_KEY"]
 SECRET_KEY = os.environ["ALPACA_SECRET_KEY"]
@@ -61,12 +54,6 @@ open_orders = trading_client.get_orders()
 sp_orders = [
     order for order in open_orders
     if order.symbol == SYMBOL
-    and order.status in [
-        OrderStatus.NEW,
-        OrderStatus.ACCEPTED,
-        OrderStatus.PENDING_NEW,
-        OrderStatus.PARTIALLY_FILLED
-    ]
 ]
 
 
