@@ -2,10 +2,17 @@
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (
     MarketOrderRequest,
+    LimitOrderRequest,
     TakeProfitRequest,
-    StopLossRequest
+    StopLossRequest,
+    GetOrdersRequest,
 )
-from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass
+from alpaca.trading.enums import (
+    OrderSide,
+    TimeInForce,
+    OrderClass,
+    QueryOrderStatus,
+)
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
@@ -21,75 +28,110 @@ data_client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
 
 SYMBOL = "SPY"
 
-# Risk controls
 MAX_POSITION_VALUE = 2500
 STOP_LOSS_PERCENT = 0.05
 TAKE_PROFIT_PERCENT = 0.10
 
+print()
+print("===== AUTOMATED SPY BOT =====")
 
-# -----------------------------
+# ---------------------------------------------------------
 # CHECK CURRENT POSITION
-# -----------------------------
+# ---------------------------------------------------------
 
 try:
     position = trading_client.get_open_position(SYMBOL)
-
     shares_owned = float(position.qty)
     entry_price = float(position.avg_entry_price)
-
 except Exception:
     shares_owned = 0
     entry_price = 0
 
-
-print()
-print("===== AUTOMATED SPY BOT =====")
 print(f"SPY shares owned: {shares_owned}")
 
+# ---------------------------------------------------------
+# CHECK OPEN ORDERS
+# ---------------------------------------------------------
 
-# -----------------------------
-# CHECK EXISTING ORDERS
-# -----------------------------
-
-open_orders = trading_client.get_orders()
+open_orders = trading_client.get_orders(
+    filter=GetOrdersRequest(
+        status=QueryOrderStatus.OPEN
+    )
+)
 
 sp_orders = [
     order for order in open_orders
     if order.symbol == SYMBOL
 ]
 
-
 print(f"Open SPY orders: {len(sp_orders)}")
 
-
-# -----------------------------
-# IF POSITION EXISTS
-# -----------------------------
+# ---------------------------------------------------------
+# EXISTING POSITION
+# ---------------------------------------------------------
 
 if shares_owned > 0:
 
     stop_price = round(
-        entry_price * (1 - STOP_LOSS_PERCENT),
-        2
+        entry_price * (1 - STOP_LOSS_PERCENT), 2
     )
 
     target_price = round(
-        entry_price * (1 + TAKE_PROFIT_PERCENT),
-        2
+        entry_price * (1 + TAKE_PROFIT_PERCENT), 2
     )
 
     print(f"Entry price: ${entry_price:.2f}")
     print(f"Stop-loss: ${stop_price:.2f}")
     print(f"Take-profit: ${target_price:.2f}")
-    print("Position already exists.")
-    print("No new BUY will be placed.")
+
+    # Check whether an existing SELL protection order exists
+    protective_orders = [
+        order for order in sp_orders
+        if order.side == OrderSide.SELL
+    ]
+
+    if protective_orders:
+        print("Protective SELL order already exists.")
+        print("No new protection will be created.")
+        exit()
+
+    # -----------------------------------------------------
+    # CREATE OCO PROTECTION
+    # -----------------------------------------------------
+
+    print()
+    print("NO PROTECTIVE ORDERS FOUND.")
+    print("Creating OCO protection for existing position.")
+
+    oco_order = LimitOrderRequest(
+        symbol=SYMBOL,
+        qty=shares_owned,
+        side=OrderSide.SELL,
+        time_in_force=TimeInForce.GTC,
+        limit_price=target_price,
+        order_class=OrderClass.OCO,
+        take_profit=TakeProfitRequest(
+            limit_price=target_price
+        ),
+        stop_loss=StopLossRequest(
+            stop_price=stop_price
+        )
+    )
+
+    trading_client.submit_order(
+        order_data=oco_order
+    )
+
+    print()
+    print("OCO PROTECTION SUBMITTED.")
+    print(f"Take-profit: ${target_price:.2f}")
+    print(f"Stop-loss: ${stop_price:.2f}")
 
     exit()
 
-
-# -----------------------------
-# IF ORDER ALREADY EXISTS
-# -----------------------------
+# ---------------------------------------------------------
+# NO POSITION / CHECK FOR EXISTING ORDERS
+# ---------------------------------------------------------
 
 if sp_orders:
 
@@ -98,7 +140,6 @@ if sp_orders:
     print("NO NEW TRADE WILL BE PLACED.")
 
     for order in sp_orders:
-
         print(
             "Existing order:",
             order.side,
@@ -108,10 +149,9 @@ if sp_orders:
 
     exit()
 
-
-# -----------------------------
+# ---------------------------------------------------------
 # GET MARKET DATA
-# -----------------------------
+# ---------------------------------------------------------
 
 end = datetime.now()
 start = end - timedelta(days=80)
@@ -128,48 +168,39 @@ bars = data_client.get_stock_bars(request).df
 
 prices = bars["close"].values
 
-
-# -----------------------------
-# CALCULATE SIGNAL
-# -----------------------------
+if len(prices) < 50:
+    print("Not enough market data.")
+    exit()
 
 ma20 = prices[-20:].mean()
 ma50 = prices[-50:].mean()
-
 current_price = prices[-1]
-
 
 print()
 print(f"Current price: ${current_price:.2f}")
 print(f"20-day average: ${ma20:.2f}")
 print(f"50-day average: ${ma50:.2f}")
 
-
-# -----------------------------
+# ---------------------------------------------------------
 # BUY SIGNAL
-# -----------------------------
+# ---------------------------------------------------------
 
 if ma20 > ma50:
 
     quantity = int(MAX_POSITION_VALUE / current_price)
 
     if quantity < 1:
-
         print("SPY price is too high for the position limit.")
         print("SIGNAL: HOLD")
         exit()
 
-
     stop_price = round(
-        current_price * (1 - STOP_LOSS_PERCENT),
-        2
+        current_price * (1 - STOP_LOSS_PERCENT), 2
     )
 
     target_price = round(
-        current_price * (1 + TAKE_PROFIT_PERCENT),
-        2
+        current_price * (1 + TAKE_PROFIT_PERCENT), 2
     )
-
 
     print()
     print("SIGNAL: BUY")
@@ -177,12 +208,11 @@ if ma20 > ma50:
     print(f"Stop-loss: ${stop_price:.2f}")
     print(f"Take-profit: ${target_price:.2f}")
 
-
     order = MarketOrderRequest(
         symbol=SYMBOL,
         qty=quantity,
         side=OrderSide.BUY,
-        time_in_force=TimeInForce.DAY,
+        time_in_force=TimeInForce.GTC,
         order_class=OrderClass.BRACKET,
         take_profit=TakeProfitRequest(
             limit_price=target_price
@@ -192,19 +222,17 @@ if ma20 > ma50:
         )
     )
 
-
     trading_client.submit_order(
         order_data=order
     )
 
     print()
     print("PAPER TRADE SUBMITTED.")
-    print("Stop-loss and take-profit attached.")
+    print("GTC stop-loss and take-profit attached.")
 
-
-# -----------------------------
-# NO BUY SIGNAL
-# -----------------------------
+# ---------------------------------------------------------
+# HOLD
+# ---------------------------------------------------------
 
 else:
 
