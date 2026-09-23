@@ -34,6 +34,13 @@ TAKE_PROFIT_PERCENT = 0.10
 
 print()
 print("===== AUTOMATED SPY BOT =====")
+account = trading_client.get_account()
+equity = float(account.equity)
+last_equity = float(account.last_equity)
+daily_pnl = equity - last_equity
+
+print(f"Account equity: ${equity:,.2f}")
+print(f"Today's P&L: ${daily_pnl:+,.2f}")
 
 # ---------------------------------------------------------
 # CHECK CURRENT POSITION
