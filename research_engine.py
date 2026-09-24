@@ -643,7 +643,7 @@ def run(args: argparse.Namespace) -> None:
         grouped_report(t, "entry_time_of_day").to_csv(outdir / f"{name}_by_time.csv", index=False)
         if not t.empty:
             tt = t.copy()
-            tt["exit_time"] = pd.to_datetime(tt.exit_time)
+            tt["exit_time"] = pd.to_datetime(tt.exit_time, utc=True)
             tt["year"] = tt.exit_time.dt.year
             tt["month"] = tt.exit_time.dt.to_period("M").astype(str)
             tt.groupby("year").pnl.sum().rename("pnl").to_csv(outdir / f"{name}_yearly_pnl.csv")
